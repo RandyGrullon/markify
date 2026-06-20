@@ -85,9 +85,9 @@ export default function Page() {
             </span>
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-slate-600 dark:text-slate-400 sm:text-base">
-            Sube un PDF, Word, Excel, CSV, HTML o texto y obtén Markdown limpio,
-            con vista previa y listo para pegar en Claude. Se guarda en tu nube
-            privada.
+            Convierte un PDF, Word, Excel, CSV, HTML o texto a Markdown limpio,
+            listo para pegar en Claude. El archivo se procesa en tu navegador
+            (no se sube) y solo el Markdown se guarda en tu nube privada.
           </p>
         </section>
 

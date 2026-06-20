@@ -27,7 +27,5 @@ yarn-error.log*
 # vercel
 .vercel
 
-# python
-__pycache__/
-*.py[cod]
-.venv/
+# pdfjs worker (se copia en predev/prebuild desde node_modules)
+/public/pdf.worker.min.mjs

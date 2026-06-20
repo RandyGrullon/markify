@@ -19,11 +19,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { getSupabase, STORAGE_BUCKET, type Conversion } from "@/lib/supabase";
+import { convertFile } from "@/lib/convert";
 
 type Result = { filename: string; markdown: string; title: string };
 type Status = "idle" | "converting" | "saving" | "done" | "error";
-
-const CONVERTER_URL = process.env.NEXT_PUBLIC_CONVERTER_URL || "/api/convert";
 
 function prettyBytes(n: number | null | undefined): string {
   if (!n) return "";
@@ -47,6 +46,7 @@ export default function Converter({ userId }: { userId: string }) {
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<Conversion[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [progress, setProgress] = useState(0);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -69,60 +69,19 @@ export default function Converter({ userId }: { userId: string }) {
       setResult(null);
       setCopied(false);
       setTab("preview");
+      setProgress(0);
       setStatus("converting");
 
-      // Subimos el original a Supabase y convertimos desde una URL firmada.
-      // Así evitamos el límite de 4.5 MB del cuerpo de las funciones de Vercel
-      // y cualquier PDF (hasta 20 MB) funciona igual en local y en producción.
-      const stamp = Date.now();
-      const safeName = file.name.replace(/[^\w.\-]+/g, "_");
-      const originalPath = `${userId}/originals/${stamp}-${safeName}`;
-
       try {
-        const { error: origErr } = await supabase.storage
-          .from(STORAGE_BUCKET)
-          .upload(originalPath, file, {
-            contentType: file.type || "application/octet-stream",
-            upsert: false,
-          });
-        if (origErr) {
-          if (/bucket not found/i.test(origErr.message || "")) {
-            throw new Error(
-              "Falta el bucket «conversions» en Supabase. Ejecuta supabase/schema.sql en el SQL Editor (crea el bucket y sus políticas) y vuelve a intentarlo."
-            );
-          }
-          throw new Error("No se pudo subir el archivo a tu nube.");
-        }
-
-        const { data: signed, error: signErr } = await supabase.storage
-          .from(STORAGE_BUCKET)
-          .createSignedUrl(originalPath, 300);
-        if (signErr || !signed?.signedUrl) {
-          throw new Error("No se pudo preparar el archivo para convertir.");
-        }
-
-        const res = await fetch(CONVERTER_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: signed.signedUrl, filename: file.name }),
-        });
-
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(data?.error || "No se pudo convertir el archivo.");
-        }
-
-        const r: Result = {
-          filename: data.filename || "documento.md",
-          markdown: data.markdown || "",
-          title: data.title || file.name,
-        };
+        // Conversión 100% en el navegador: el archivo nunca se sube.
+        // Sin límite de tamaño y con progreso real (página a página en PDF).
+        const r = await convertFile(file, (pct) => setProgress(pct));
         setResult(r);
 
-        // Guardar el Markdown en Supabase (Storage + base de datos)
+        // Solo se guarda el Markdown en Supabase (Storage + base de datos).
         setStatus("saving");
         try {
-          const path = `${userId}/${stamp}-${r.filename}`;
+          const path = `${userId}/${Date.now()}-${r.filename}`;
           const blob = new Blob([r.markdown], { type: "text/markdown" });
 
           const { error: upErr } = await supabase.storage
@@ -131,7 +90,14 @@ export default function Converter({ userId }: { userId: string }) {
               contentType: "text/markdown",
               upsert: false,
             });
-          if (upErr) throw upErr;
+          if (upErr) {
+            if (/bucket not found/i.test(upErr.message || "")) {
+              throw new Error(
+                "Falta el bucket «conversions» en Supabase. Ejecuta supabase/schema.sql en el SQL Editor (crea el bucket y sus políticas)."
+              );
+            }
+            throw upErr;
+          }
 
           const { error: dbErr } = await supabase.from("conversions").insert({
             user_id: userId,
@@ -152,9 +118,6 @@ export default function Converter({ userId }: { userId: string }) {
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Ocurrió un error inesperado.");
         setStatus("error");
-      } finally {
-        // Solo guardamos el Markdown: borramos el original subido temporalmente.
-        supabase.storage.from(STORAGE_BUCKET).remove([originalPath]).catch(() => {});
       }
     },
     [supabase, userId, loadHistory]
@@ -241,10 +204,26 @@ export default function Converter({ userId }: { userId: string }) {
             <Loader2 className="h-10 w-10 animate-spin text-brand-600 dark:text-brand-400" />
             <p className="font-semibold text-slate-700 dark:text-slate-200">
               {status === "converting"
-                ? "Convirtiendo a Markdown…"
-                : "Guardando en tu nube…"}
+                ? "Procesando en tu navegador…"
+                : "Guardando el Markdown en tu nube…"}
             </p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Esto toma solo unos segundos</p>
+
+            {/* Barra de progreso (porcentaje real página a página en PDF) */}
+            <div className="mt-1 w-full max-w-sm">
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-[width] duration-200 ease-out"
+                  style={{ width: `${status === "saving" ? 100 : progress}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+                {status === "saving" ? "Casi listo…" : `${progress}%`}
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              El archivo no se sube: se procesa en tu dispositivo.
+            </p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-4">
@@ -256,7 +235,7 @@ export default function Converter({ userId }: { userId: string }) {
                 {isDragActive ? "Suelta el archivo aquí" : "Arrastra tu archivo"}
               </p>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                PDF, Word, Excel, CSV, HTML y texto · máx. 20&nbsp;MB
+                PDF, Word, Excel, CSV, HTML y texto · sin límite de tamaño · privado
               </p>
             </div>
             <button
