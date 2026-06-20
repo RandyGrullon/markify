@@ -2,24 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   UploadCloud,
   FileText,
   Loader2,
   Download,
-  Copy,
-  Check,
-  Eye,
-  Code2,
   AlertCircle,
   Trash2,
   History as HistoryIcon,
   RefreshCw,
+  Search,
+  Sparkles,
 } from "lucide-react";
 import { getSupabase, STORAGE_BUCKET, type Conversion } from "@/lib/supabase";
 import { convertFile } from "@/lib/convert";
+import ResultPanel from "@/components/ResultPanel";
 
 type Result = { filename: string; markdown: string; title: string };
 type Status = "idle" | "converting" | "saving" | "done" | "error";
@@ -42,11 +39,13 @@ export default function Converter({ userId }: { userId: string }) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
-  const [tab, setTab] = useState<"preview" | "code">("preview");
-  const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<Conversion[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [historyQuery, setHistoryQuery] = useState("");
+  // Cada apertura (conversión o item del historial) remonta el panel de resultado.
+  const [openId, setOpenId] = useState(0);
+  const [initialChat, setInitialChat] = useState(false);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -67,9 +66,8 @@ export default function Converter({ userId }: { userId: string }) {
     async (file: File) => {
       setError(null);
       setResult(null);
-      setCopied(false);
-      setTab("preview");
       setProgress(0);
+      setInitialChat(false);
       setStatus("converting");
 
       try {
@@ -77,6 +75,7 @@ export default function Converter({ userId }: { userId: string }) {
         // Sin límite de tamaño y con progreso real (página a página en PDF).
         const r = await convertFile(file, (pct) => setProgress(pct));
         setResult(r);
+        setOpenId((n) => n + 1);
 
         // Solo se guarda el Markdown en Supabase (Storage + base de datos).
         setStatus("saving");
@@ -137,22 +136,6 @@ export default function Converter({ userId }: { userId: string }) {
     noKeyboard: true,
   });
 
-  const downloadCurrent = () => {
-    if (!result) return;
-    downloadMarkdown(result.markdown, result.filename);
-  };
-
-  const copyCurrent = async () => {
-    if (!result) return;
-    try {
-      await navigator.clipboard.writeText(result.markdown);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* ignore */
-    }
-  };
-
   const downloadFromHistory = async (item: Conversion) => {
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
@@ -162,7 +145,7 @@ export default function Converter({ userId }: { userId: string }) {
     downloadMarkdown(text, item.markdown_name);
   };
 
-  const openFromHistory = async (item: Conversion) => {
+  const openFromHistory = async (item: Conversion, chat = false) => {
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .download(item.storage_path);
@@ -173,8 +156,9 @@ export default function Converter({ userId }: { userId: string }) {
       markdown: text,
       title: item.original_name,
     });
+    setInitialChat(chat);
+    setOpenId((n) => n + 1);
     setStatus("done");
-    setTab("preview");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -185,6 +169,12 @@ export default function Converter({ userId }: { userId: string }) {
   };
 
   const busy = status === "converting" || status === "saving";
+
+  const filteredHistory = useMemo(() => {
+    const q = historyQuery.trim().toLowerCase();
+    if (!q) return history;
+    return history.filter((h) => h.original_name.toLowerCase().includes(q));
+  }, [history, historyQuery]);
 
   return (
     <div className="space-y-6">
@@ -260,81 +250,17 @@ export default function Converter({ userId }: { userId: string }) {
 
       {/* ── Resultado ── */}
       {result && (status === "done" || status === "saving") && (
-        <div className="animate-fade-in overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-slate-800 dark:text-slate-100">
-                  {result.filename}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {status === "saving" ? "Guardando…" : "Listo para usar en Claude"}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={copyCurrent}
-                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:flex-none"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 text-emerald-600" /> Copiado
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4" /> Copiar
-                  </>
-                )}
-              </button>
-              <button
-                onClick={downloadCurrent}
-                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 sm:flex-none"
-              >
-                <Download className="h-4 w-4" /> Descargar
-              </button>
-            </div>
-          </div>
-
-          {/* Pestañas */}
-          <div className="flex gap-1 border-b border-slate-100 px-4 pt-3 dark:border-slate-800 sm:px-5">
-            <TabBtn active={tab === "preview"} onClick={() => setTab("preview")}>
-              <Eye className="h-4 w-4" /> Vista
-            </TabBtn>
-            <TabBtn active={tab === "code"} onClick={() => setTab("code")}>
-              <Code2 className="h-4 w-4" /> Código
-            </TabBtn>
-          </div>
-
-          <div className="thin-scroll max-h-[60vh] overflow-auto p-5 sm:p-6">
-            {tab === "preview" ? (
-              result.markdown.trim() ? (
-                <div className="markdown-preview">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {result.markdown}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400 dark:text-slate-500">
-                  (El archivo no contenía texto extraíble.)
-                </p>
-              )
-            ) : (
-              <pre className="thin-scroll overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-900 p-4 text-sm leading-relaxed text-slate-100 dark:bg-black/40 dark:ring-1 dark:ring-white/10">
-                {result.markdown}
-              </pre>
-            )}
-          </div>
-        </div>
+        <ResultPanel
+          key={openId}
+          result={result}
+          saving={status === "saving"}
+          initialView={initialChat ? "chat" : "split"}
+        />
       )}
 
       {/* ── Historial ── */}
       <div className="rounded-3xl border border-slate-200 bg-white/70 p-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/50 sm:p-5">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
             <HistoryIcon className="h-4 w-4 text-slate-400" />
             Tus conversiones guardadas
@@ -348,6 +274,19 @@ export default function Converter({ userId }: { userId: string }) {
           </button>
         </div>
 
+        {/* Buscador por nombre */}
+        {history.length > 0 && (
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={historyQuery}
+              onChange={(e) => setHistoryQuery(e.target.value)}
+              placeholder="Buscar por nombre…"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </div>
+        )}
+
         {loadingHistory ? (
           <div className="space-y-2">
             {[0, 1, 2].map((k) => (
@@ -358,9 +297,13 @@ export default function Converter({ userId }: { userId: string }) {
           <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">
             Aún no tienes conversiones. ¡Sube tu primer archivo arriba! ☝️
           </p>
+        ) : filteredHistory.length === 0 ? (
+          <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+            Ningún documento coincide con «{historyQuery}».
+          </p>
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {history.map((item) => (
+            {filteredHistory.map((item) => (
               <li
                 key={item.id}
                 className="flex items-center gap-3 py-2.5"
@@ -386,6 +329,14 @@ export default function Converter({ userId }: { userId: string }) {
                   </p>
                 </button>
                 <button
+                  onClick={() => openFromHistory(item, true)}
+                  aria-label="Preguntar a la IA"
+                  title="Preguntar a la IA"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-400"
+                >
+                  <Sparkles className="h-4 w-4" />
+                </button>
+                <button
                   onClick={() => downloadFromHistory(item)}
                   aria-label="Descargar"
                   className="rounded-lg p-2 text-slate-400 transition hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-400"
@@ -405,29 +356,6 @@ export default function Converter({ userId }: { userId: string }) {
         )}
       </div>
     </div>
-  );
-}
-
-function TabBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-t-lg px-4 py-2.5 text-sm font-medium transition ${
-        active
-          ? "border-b-2 border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-300"
-          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

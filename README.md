@@ -5,11 +5,13 @@ Convierte tus archivos (**PDF, Word, Excel, CSV, HTML y texto**) a **Markdown li
 - 🎨 Diseño moderno y responsive: se ve y funciona perfecto en **móvil, iPad y Mac**.
 - 🔐 Login con **Google** (vía Supabase).
 - ☁️ Guarda tus conversiones de forma **privada** (Supabase Storage + base de datos).
-- 👀 **Vista previa** con formato + código Markdown.
+- 👀 **Vista dividida** redimensionable: vista previa + Markdown lado a lado.
+- 🔎 **Buscador** dentro del Markdown (resaltado y navegación entre coincidencias).
+- 🤖 **Chat de IA** (Groq) que conoce el documento: pregúntale desde el resultado o desde el historial.
 - 🧙 **Tutorial guiado** dentro de la app (se abre solo la primera vez; botón «¿Cómo funciona?» para repetirlo).
-- ⚙️ Conversión **100% en el navegador** (sin Python ni backend): el archivo nunca se sube, se procesa en tu dispositivo. Sin límite de tamaño y con barra de progreso.
+- ⚙️ Conversión **100% en el navegador**: el archivo nunca se sube, se procesa en tu dispositivo. Sin límite de tamaño y con barra de progreso.
 
-Todo en **un solo proyecto** Next.js que se despliega en **Vercel** (solo frontend estático).
+Todo en **un solo proyecto** Next.js que se despliega en **Vercel** (frontend estático + una función para el chat de IA).
 
 ---
 
@@ -109,6 +111,7 @@ Abre [http://localhost:3000](http://localhost:3000).
 3. En **Environment Variables** añade:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `GROQ_API_KEY` (para el chat de IA — solo servidor, no se expone al navegador)
 4. **Deploy**. Vercel detecta el proyecto **Next.js** (solo frontend estático).
    No hay funciones serverless ni dependencias de Python; el `prebuild` copia el
    worker de pdfjs a `public/`.
@@ -139,7 +142,9 @@ El tutorial guiado se abre solo la primera vez. Para verlo otra vez: botón **«
 - **Supabase** (Auth con Google · Postgres · Storage)
 - **Conversión en el navegador** (`lib/convert.ts`, import dinámico): `pdfjs-dist`
   (PDF, con progreso por página), `mammoth` (Word), `xlsx` (Excel/CSV), `turndown` (HTML)
-- `react-markdown` + `remark-gfm` para la vista previa
+- **Chat de IA** con **Groq** (`app/api/chat/route.ts`, streaming): la API key vive
+  solo en el servidor (`GROQ_API_KEY`)
+- `react-markdown` + `remark-gfm` para la vista previa y las respuestas del chat
 - `react-dropzone` para elegir archivos · `lucide-react` para iconos
 
 ---

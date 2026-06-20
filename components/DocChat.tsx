@@ -1,0 +1,199 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Send, Sparkles, Loader2, Bot, User, RotateCcw } from "lucide-react";
+
+type Msg = { role: "user" | "assistant"; content: string };
+
+const SUGGESTIONS = [
+  "Resume el documento en 5 puntos",
+  "¿Cuáles son las ideas principales?",
+  "Explícamelo como si tuviera 12 años",
+  "Hazme 3 preguntas de repaso",
+];
+
+export default function DocChat({
+  document,
+  title,
+}: {
+  document: string;
+  title: string;
+}) {
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, busy]);
+
+  const ask = useCallback(
+    async (question: string) => {
+      const q = question.trim();
+      if (!q || busy) return;
+      setError(null);
+      setInput("");
+
+      const next: Msg[] = [...messages, { role: "user", content: q }];
+      setMessages([...next, { role: "assistant", content: "" }]);
+      setBusy(true);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: next, document, title }),
+        });
+
+        if (!res.ok || !res.body) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || "La IA no pudo responder.");
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let acc = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          acc += decoder.decode(value, { stream: true });
+          setMessages((m) => {
+            const copy = m.slice();
+            copy[copy.length - 1] = { role: "assistant", content: acc };
+            return copy;
+          });
+        }
+        if (!acc.trim()) {
+          setMessages((m) => {
+            const copy = m.slice();
+            copy[copy.length - 1] = {
+              role: "assistant",
+              content: "_(Sin respuesta. Intenta reformular la pregunta.)_",
+            };
+            return copy;
+          });
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Error inesperado.");
+        // Quitamos la burbuja vacía del asistente.
+        setMessages((m) => m.slice(0, -1));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, messages, document, title]
+  );
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Mensajes */}
+      <div ref={scrollRef} className="thin-scroll flex-1 space-y-4 overflow-auto p-4 sm:p-5">
+        {messages.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 dark:text-slate-100">
+                Pregúntale a la IA sobre este documento
+              </p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Conoce todo el contenido de «{title}».
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => ask(s)}
+                  className="rounded-full border border-slate-200 bg-white/60 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-brand-400 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:border-brand-500 dark:hover:text-brand-300"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((m, i) => (
+            <div
+              key={i}
+              className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}
+            >
+              <div
+                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+                  m.role === "user"
+                    ? "bg-brand-600 text-white"
+                    : "bg-slate-100 text-brand-700 dark:bg-slate-800 dark:text-brand-300"
+                }`}
+              >
+                {m.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+              </div>
+              <div
+                className={`chat-bubble min-w-0 max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                  m.role === "user"
+                    ? "bg-brand-600 text-white"
+                    : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                }`}
+              >
+                {m.role === "assistant" ? (
+                  m.content ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                  ) : (
+                    <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                  )
+                ) : (
+                  <span className="whitespace-pre-wrap break-words">{m.content}</span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {error && (
+        <p className="px-4 pb-1 text-xs text-red-600 dark:text-red-400">{error}</p>
+      )}
+
+      {/* Entrada */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          ask(input);
+        }}
+        className="flex items-center gap-2 border-t border-slate-100 p-3 dark:border-slate-800"
+      >
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setMessages([]);
+              setError(null);
+            }}
+            title="Reiniciar conversación"
+            className="rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+        )}
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Escribe tu pregunta…"
+          disabled={busy}
+          className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+        />
+        <button
+          type="submit"
+          disabled={busy || !input.trim()}
+          className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </button>
+      </form>
+    </div>
+  );
+}

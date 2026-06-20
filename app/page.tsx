@@ -76,7 +76,7 @@ export default function Page() {
         {/* Hero */}
         <section className="mb-8 text-center sm:mb-10">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
-            <Sparkles className="h-3.5 w-3.5" /> Optimizado para Claude
+            <Sparkles className="h-3.5 w-3.5" /> Ahora con chat de IA
           </span>
           <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
             Convierte cualquier archivo a{" "}
@@ -86,8 +86,9 @@ export default function Page() {
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-slate-600 dark:text-slate-400 sm:text-base">
             Convierte un PDF, Word, Excel, CSV, HTML o texto a Markdown limpio,
-            listo para pegar en Claude. El archivo se procesa en tu navegador
-            (no se sube) y solo el Markdown se guarda en tu nube privada.
+            con vista dividida, buscador y un chat de IA que conoce tu documento.
+            El archivo se procesa en tu navegador (no se sube) y solo el Markdown
+            se guarda en tu nube privada.
           </p>
         </section>
 
@@ -105,7 +106,15 @@ export default function Page() {
       </main>
 
       <footer className="mx-auto max-w-3xl px-4 pb-10 text-center text-xs text-slate-400 dark:text-slate-500 sm:px-6">
-        Hecho con 💜 · Convierte tus archivos a Markdown para Claude
+        Hecho con 💜 · Conversión en tu navegador · IA por{" "}
+        <a
+          href="https://groq.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-slate-600 dark:hover:text-slate-300"
+        >
+          Groq
+        </a>
       </footer>
 
       <Tutorial open={tutorialOpen} onClose={() => setTutorialOpen(false)} />

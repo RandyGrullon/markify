@@ -30,7 +30,7 @@ export default function Header({
               Markify
             </p>
             <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">
-              Archivos → Markdown para Claude
+              Convierte, busca y pregúntale a la IA
             </p>
           </div>
         </div>
