@@ -83,10 +83,12 @@ export default function ResultPanel({
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [isAiSource, setIsAiSource] = useState(false);
   const [activeMatch, setActiveMatch] = useState(0);
 
-  const triggerSearch = useCallback((text: string, immediate = false) => {
+  const triggerSearch = useCallback((text: string, immediate = false, fromAi = false) => {
     setQuery(text);
+    setIsAiSource(fromAi);
     if (immediate) {
       setDebouncedQuery(text);
     }
@@ -165,11 +167,12 @@ export default function ResultPanel({
     if (!container) return;
 
     // 1. Limpiar marcas anteriores (.preview-hl)
-    const marks = container.querySelectorAll("mark.preview-hl");
+    const marks = container.querySelectorAll("span.preview-hl");
     marks.forEach((mark) => {
       const parent = mark.parentNode;
       if (parent) {
-        const textNode = document.createTextNode(mark.textContent || "");
+        const textContent = mark.querySelector("mark")?.textContent || "";
+        const textNode = document.createTextNode(textContent);
         parent.replaceChild(textNode, mark);
         parent.normalize();
       }
@@ -194,21 +197,34 @@ export default function ResultPanel({
 
           const parent = node.parentNode;
           if (parent) {
-            const span = document.createElement("span");
-            if (before) span.appendChild(document.createTextNode(before));
+            const wrapper = document.createElement("span");
+            wrapper.className = "preview-hl inline-flex items-center flex-wrap";
 
             const mark = document.createElement("mark");
-            mark.className = "preview-hl bg-brand-200 text-slate-900 rounded px-0.5 dark:bg-brand-500/40 dark:text-white ring-2 ring-brand-500/30 animate-pulse";
+            mark.className = "bg-brand-100 dark:bg-brand-500/20 text-brand-900 dark:text-brand-300 rounded px-1 py-0.5 dark:text-white ring-2 ring-brand-500/30 animate-pulse font-medium";
             mark.textContent = matchText;
-            span.appendChild(mark);
+            wrapper.appendChild(mark);
 
-            if (after) span.appendChild(document.createTextNode(after));
+            if (isAiSource) {
+              const badge = document.createElement("span");
+              badge.className = "ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-brand-600 to-violet-600 text-white px-2 py-0.5 rounded-full shadow-sm cursor-default select-none animate-bounce";
+              badge.innerHTML = "✨ Fuente IA";
+              wrapper.appendChild(badge);
+            }
 
-            parent.replaceChild(span, node);
+            const beforeNode = before ? document.createTextNode(before) : null;
+            const afterNode = after ? document.createTextNode(after) : null;
+
+            if (beforeNode) parent.insertBefore(beforeNode, node);
+            parent.insertBefore(wrapper, node);
+            if (afterNode) parent.insertBefore(afterNode, node);
+
+            parent.removeChild(node);
           }
         }
       } else {
-        if (node.nodeName !== "SCRIPT" && node.nodeName !== "STYLE" && node.nodeName !== "MARK" && node.nodeName !== "A" && node.nodeName !== "BUTTON") {
+        const isWrapper = node.nodeName === "SPAN" && (node as HTMLElement).classList.contains("preview-hl");
+        if (!isWrapper && node.nodeName !== "SCRIPT" && node.nodeName !== "STYLE" && node.nodeName !== "MARK" && node.nodeName !== "A" && node.nodeName !== "BUTTON") {
           const children = Array.from(node.childNodes);
           children.forEach(walk);
         }
@@ -218,11 +234,11 @@ export default function ResultPanel({
     walk(previewContainer);
 
     // Hacer scroll al primer mark encontrado en la vista previa
-    const firstMark = previewContainer.querySelector("mark.preview-hl");
+    const firstMark = previewContainer.querySelector("span.preview-hl mark");
     if (firstMark) {
       firstMark.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-  }, [debouncedQuery, docView, result.markdown]);
+  }, [debouncedQuery, isAiSource, docView, result.markdown]);
 
   const copy = async () => {
     try {
@@ -337,13 +353,13 @@ export default function ResultPanel({
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   value={query}
-                  onChange={(e) => triggerSearch(e.target.value, false)}
+                  onChange={(e) => triggerSearch(e.target.value, false, false)}
                   placeholder="Buscar en el Markdown…"
                   className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-9 pr-8 text-sm text-slate-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 />
                 {query && (
                   <button
-                    onClick={() => triggerSearch("", true)}
+                    onClick={() => triggerSearch("", true, false)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                     aria-label="Limpiar"
                   >
@@ -499,7 +515,7 @@ export default function ResultPanel({
                 document={result.markdown}
                 title={result.title}
                 onCitationClick={(text) => {
-                  triggerSearch(text, true);
+                  triggerSearch(text, true, true);
                   setDocView("preview");
                 }}
               />
