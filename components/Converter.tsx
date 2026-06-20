@@ -85,7 +85,14 @@ export default function Converter({ userId }: { userId: string }) {
             contentType: file.type || "application/octet-stream",
             upsert: false,
           });
-        if (origErr) throw new Error("No se pudo subir el archivo a tu nube.");
+        if (origErr) {
+          if (/bucket not found/i.test(origErr.message || "")) {
+            throw new Error(
+              "Falta el bucket «conversions» en Supabase. Ejecuta supabase/schema.sql en el SQL Editor (crea el bucket y sus políticas) y vuelve a intentarlo."
+            );
+          }
+          throw new Error("No se pudo subir el archivo a tu nube.");
+        }
 
         const { data: signed, error: signErr } = await supabase.storage
           .from(STORAGE_BUCKET)
