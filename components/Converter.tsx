@@ -45,6 +45,7 @@ export default function Converter({
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  const [activeConversion, setActiveConversion] = useState<Conversion | null>(null);
   const [history, setHistory] = useState<Conversion[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -52,12 +53,6 @@ export default function Converter({
   // Cada apertura (conversión o item del historial) remonta el panel de resultado.
   const [openId, setOpenId] = useState(0);
   const [initialChat, setInitialChat] = useState(false);
-
-  useEffect(() => {
-    if (onResultChange) {
-      onResultChange(result !== null);
-    }
-  }, [result, onResultChange]);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -69,6 +64,32 @@ export default function Converter({
     if (!error && data) setHistory(data as Conversion[]);
     setLoadingHistory(false);
   }, [supabase]);
+
+  const handleSaveMarkdown = useCallback(async (newMarkdown: string) => {
+    if (!activeConversion) return;
+    const blob = new Blob([newMarkdown], { type: "text/markdown" });
+    const { error: upErr } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(activeConversion.storage_path, blob, {
+        contentType: "text/markdown",
+        upsert: true,
+      });
+    if (upErr) throw upErr;
+
+    await supabase
+      .from("conversions")
+      .update({ size_bytes: blob.size })
+      .eq("id", activeConversion.id);
+
+    setResult(prev => prev ? { ...prev, markdown: newMarkdown } : null);
+    await loadHistory();
+  }, [activeConversion, supabase, loadHistory]);
+
+  useEffect(() => {
+    if (onResultChange) {
+      onResultChange(result !== null);
+    }
+  }, [result, onResultChange]);
 
   useEffect(() => {
     loadHistory();
@@ -110,14 +131,20 @@ export default function Converter({
             throw upErr;
           }
 
-          const { error: dbErr } = await supabase.from("conversions").insert({
-            user_id: userId,
-            original_name: file.name,
-            markdown_name: r.filename,
-            storage_path: path,
-            size_bytes: file.size,
-          });
+          const { data: dbData, error: dbErr } = await supabase
+            .from("conversions")
+            .insert({
+              user_id: userId,
+              original_name: file.name,
+              markdown_name: r.filename,
+              storage_path: path,
+              size_bytes: file.size,
+            })
+            .select();
           if (dbErr) throw dbErr;
+          if (dbData && dbData[0]) {
+            setActiveConversion(dbData[0]);
+          }
 
           await loadHistory();
         } catch (saveErr) {
@@ -163,6 +190,7 @@ export default function Converter({
       .download(item.storage_path);
     if (error || !data) return;
     const text = await data.text();
+    setActiveConversion(item);
     setResult({
       filename: item.markdown_name,
       markdown: text,
@@ -173,11 +201,24 @@ export default function Converter({
     setStatus("done");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
   const deleteFromHistory = async (item: Conversion) => {
-    await supabase.storage.from(STORAGE_BUCKET).remove([item.storage_path]);
-    await supabase.from("conversions").delete().eq("id", item.id);
-    setHistory((h) => h.filter((x) => x.id !== item.id));
+    const confirmDelete = window.confirm(
+      `¿Estás seguro de que deseas eliminar permanentemente el documento "${item.original_name}"? Esta acción no se puede deshacer.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await supabase.storage.from(STORAGE_BUCKET).remove([item.storage_path]);
+      await supabase.from("conversions").delete().eq("id", item.id);
+      setHistory((h) => h.filter((x) => x.id !== item.id));
+      if (activeConversion?.id === item.id) {
+        setActiveConversion(null);
+        setResult(null);
+      }
+    } catch (err) {
+      console.error("Error al eliminar:", err);
+      alert("Hubo un error al intentar eliminar el archivo.");
+    }
   };
 
   const busy = status === "converting" || status === "saving";
@@ -266,7 +307,8 @@ export default function Converter({
           key={openId}
           result={result}
           saving={status === "saving"}
-          initialView={initialChat ? "chat" : "split"}
+          initialView={initialChat ? "chat" : "preview"}
+          onSave={handleSaveMarkdown}
         />
       )}
 
