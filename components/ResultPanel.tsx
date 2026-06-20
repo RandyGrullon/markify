@@ -65,7 +65,21 @@ export default function ResultPanel({
   const [docView, setDocView] = useState<"split" | "preview" | "markdown">(
     initialView === "chat" ? "preview" : "split"
   );
+  const [prevDocView, setPrevDocView] = useState<"split" | "preview" | "markdown">("split");
   const [showChat, setShowChat] = useState<boolean>(initialView === "chat");
+
+  const toggleChat = useCallback(() => {
+    setShowChat((prev) => {
+      const next = !prev;
+      if (next) {
+        setPrevDocView(docView);
+        setDocView("preview");
+      } else {
+        setDocView(prevDocView);
+      }
+      return next;
+    });
+  }, [docView, prevDocView]);
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState("");
   const [activeMatch, setActiveMatch] = useState(0);
@@ -202,22 +216,30 @@ export default function ResultPanel({
 
       {/* Barra de control: vista + búsqueda */}
       <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
-          <ToggleBtn active={docView === "preview"} onClick={() => setDocView("preview")}>
-            <Eye className="h-4 w-4" /> Vista Previa
-          </ToggleBtn>
-          <ToggleBtn active={docView === "markdown"} onClick={() => setDocView("markdown")}>
-            <Code className="h-4 w-4" /> Código Markdown
-          </ToggleBtn>
-          <ToggleBtn active={docView === "split"} onClick={() => setDocView("split")}>
-            <Columns2 className="h-4 w-4" /> Dividido
-          </ToggleBtn>
-        </div>
+        {!showChat ? (
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+            <ToggleBtn active={docView === "preview"} onClick={() => setDocView("preview")}>
+              <Eye className="h-4 w-4" /> Vista Previa
+            </ToggleBtn>
+            <ToggleBtn active={docView === "markdown"} onClick={() => setDocView("markdown")}>
+              <Code className="h-4 w-4" /> Código Markdown
+            </ToggleBtn>
+            <ToggleBtn active={docView === "split"} onClick={() => setDocView("split")}>
+              <Columns2 className="h-4 w-4" /> Dividido
+            </ToggleBtn>
+          </div>
+        ) : (
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+            <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium bg-white text-brand-700 shadow-sm dark:bg-slate-700 dark:text-brand-300">
+              <Eye className="h-4 w-4 text-brand-500" /> Vista Previa
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Botón para sacar el chat a la derecha */}
           <button
-            onClick={() => setShowChat(!showChat)}
+            onClick={toggleChat}
             className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold transition active:scale-[0.98] ${
               showChat
                 ? "bg-brand-600 text-white shadow-md shadow-brand-500/20"
@@ -375,7 +397,10 @@ export default function ResultPanel({
                 <Sparkles className="h-3.5 w-3.5 text-brand-500" /> Chat IA del Documento
               </span>
               <button
-                onClick={() => setShowChat(false)}
+                onClick={() => {
+                  setShowChat(false);
+                  setDocView(prevDocView);
+                }}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label="Cerrar Chat"
               >
