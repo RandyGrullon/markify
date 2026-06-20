@@ -82,13 +82,29 @@ export default function ResultPanel({
   }, [docView, prevDocView]);
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeMatch, setActiveMatch] = useState(0);
+
+  const triggerSearch = useCallback((text: string, immediate = false) => {
+    setQuery(text);
+    if (immediate) {
+      setDebouncedQuery(text);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 150);
+    return () => clearTimeout(handler);
+  }, [query]);
 
   // Split redimensionable (solo escritorio).
   const [ratio, setRatio] = useState(50);
   const [isDesktop, setIsDesktop] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef<HTMLPreElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
   useEffect(() => {
@@ -129,19 +145,84 @@ export default function ResultPanel({
   }, [setFromX]);
 
   const { html, count } = useMemo(
-    () => highlight(result.markdown, query, activeMatch),
-    [result.markdown, query, activeMatch]
+    () => highlight(result.markdown, debouncedQuery, activeMatch),
+    [result.markdown, debouncedQuery, activeMatch]
   );
 
   // Al cambiar la búsqueda, vuelve al primer resultado y desplázate a él.
   useEffect(() => {
     setActiveMatch(0);
-  }, [query]);
+  }, [debouncedQuery]);
 
   useEffect(() => {
     const el = codeRef.current?.querySelector<HTMLElement>("mark.active");
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [activeMatch, html]);
+
+  // Resalta y desplaza la vista previa al buscar/referenciar texto exacto
+  useEffect(() => {
+    const container = panelRef.current;
+    if (!container) return;
+
+    // 1. Limpiar marcas anteriores (.preview-hl)
+    const marks = container.querySelectorAll("mark.preview-hl");
+    marks.forEach((mark) => {
+      const parent = mark.parentNode;
+      if (parent) {
+        const textNode = document.createTextNode(mark.textContent || "");
+        parent.replaceChild(textNode, mark);
+        parent.normalize();
+      }
+    });
+
+    const q = debouncedQuery.trim();
+    if (!q) return;
+
+    // Buscamos el contenedor de la Vista Previa activa
+    const previewContainer = container.querySelector(".markdown-preview");
+    if (!previewContainer) return;
+
+    // Helper recursivo para buscar y resaltar en nodos de texto
+    const walk = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.nodeValue || "";
+        const index = text.toLowerCase().indexOf(q.toLowerCase());
+        if (index !== -1) {
+          const matchText = text.substring(index, index + q.length);
+          const before = text.substring(0, index);
+          const after = text.substring(index + q.length);
+
+          const parent = node.parentNode;
+          if (parent) {
+            const span = document.createElement("span");
+            if (before) span.appendChild(document.createTextNode(before));
+
+            const mark = document.createElement("mark");
+            mark.className = "preview-hl bg-brand-200 text-slate-900 rounded px-0.5 dark:bg-brand-500/40 dark:text-white ring-2 ring-brand-500/30 animate-pulse";
+            mark.textContent = matchText;
+            span.appendChild(mark);
+
+            if (after) span.appendChild(document.createTextNode(after));
+
+            parent.replaceChild(span, node);
+          }
+        }
+      } else {
+        if (node.nodeName !== "SCRIPT" && node.nodeName !== "STYLE" && node.nodeName !== "MARK" && node.nodeName !== "A" && node.nodeName !== "BUTTON") {
+          const children = Array.from(node.childNodes);
+          children.forEach(walk);
+        }
+      }
+    };
+
+    walk(previewContainer);
+
+    // Hacer scroll al primer mark encontrado en la vista previa
+    const firstMark = previewContainer.querySelector("mark.preview-hl");
+    if (firstMark) {
+      firstMark.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [debouncedQuery, docView, result.markdown]);
 
   const copy = async () => {
     try {
@@ -173,7 +254,7 @@ export default function ResultPanel({
   const hasText = result.markdown.trim().length > 0;
 
   return (
-    <div className="animate-fade-in overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div ref={panelRef} className="animate-fade-in overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
       {/* Cabecera */}
       <div className="flex flex-col gap-3 border-b border-slate-100 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div className="flex min-w-0 items-center gap-3">
@@ -256,13 +337,13 @@ export default function ResultPanel({
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => triggerSearch(e.target.value, false)}
                   placeholder="Buscar en el Markdown…"
                   className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-9 pr-8 text-sm text-slate-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 />
                 {query && (
                   <button
-                    onClick={() => setQuery("")}
+                    onClick={() => triggerSearch("", true)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                     aria-label="Limpiar"
                   >
@@ -301,7 +382,7 @@ export default function ResultPanel({
         {/* Área de Documentos */}
         <div className="flex-1 min-w-0 h-full overflow-hidden flex flex-col">
           {docView === "split" ? (
-            <div ref={containerRef} className="flex h-full flex-col sm:flex-row overflow-hidden">
+            <div ref={containerRef} className="flex h-full flex-col sm:flex-row overflow-hidden animate-fade-in">
               {/* Vista previa */}
               <div
                 className="thin-scroll min-h-0 flex-1 overflow-auto p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 sm:border-b-0 sm:border-r"
@@ -354,7 +435,7 @@ export default function ResultPanel({
             </div>
           ) : docView === "preview" ? (
             /* Vista previa completa */
-            <div className="thin-scroll flex-1 overflow-auto p-4 sm:p-6">
+            <div className="thin-scroll flex-1 overflow-auto p-4 sm:p-6 animate-fade-in">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Vista previa
               </p>
@@ -374,7 +455,7 @@ export default function ResultPanel({
             </div>
           ) : (
             /* Código Markdown completo */
-            <div className="thin-scroll flex-1 overflow-auto p-4 sm:p-6">
+            <div className="thin-scroll flex-1 overflow-auto p-4 sm:p-6 animate-fade-in">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Markdown
               </p>
@@ -389,9 +470,15 @@ export default function ResultPanel({
           )}
         </div>
 
-        {/* Panel lateral del Chat (sacable a la derecha) */}
-        {showChat && (
-          <div className="w-full lg:w-[380px] xl:w-[420px] flex-shrink-0 h-full border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shadow-[-4px_0_20px_rgba(0,0,0,0.02)] dark:shadow-none animate-fade-in">
+        {/* Panel lateral del Chat (sacable a la derecha con transición suave de deslizamiento) */}
+        <div
+          className={`h-full border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shadow-[-4px_0_20px_rgba(0,0,0,0.02)] dark:shadow-none transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${
+            showChat
+              ? "w-full lg:w-[380px] xl:w-[420px] opacity-100"
+              : "w-0 opacity-0 pointer-events-none border-l-0"
+          }`}
+        >
+          <div className="w-full lg:w-[380px] xl:w-[420px] h-full flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-4 py-3 bg-slate-50/50 dark:bg-slate-900/50">
               <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-700 dark:text-brand-300">
                 <Sparkles className="h-3.5 w-3.5 text-brand-500" /> Chat IA del Documento
@@ -408,10 +495,17 @@ export default function ResultPanel({
               </button>
             </div>
             <div className="flex-1 min-h-0">
-              <DocChat document={result.markdown} title={result.title} />
+              <DocChat
+                document={result.markdown}
+                title={result.title}
+                onCitationClick={(text) => {
+                  triggerSearch(text, true);
+                  setDocView("preview");
+                }}
+              />
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

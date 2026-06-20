@@ -10,7 +10,7 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = "llama-3.3-70b-versatile";
 // Margen amplio para el contexto del documento (el modelo admite ~128k tokens).
-const MAX_DOC_CHARS = 240_000;
+const MAX_DOC_CHARS = 120_000;
 
 export async function POST(req: Request) {
   const key = process.env.GROQ_API_KEY;
@@ -34,21 +34,25 @@ export async function POST(req: Request) {
   }
 
   const fullDoc = typeof payload.document === "string" ? payload.document : "";
-  const doc = fullDoc.slice(0, MAX_DOC_CHARS);
-  const truncated = fullDoc.length > MAX_DOC_CHARS;
+  let docCharsLimit = MAX_DOC_CHARS;
+  let doc = fullDoc.slice(0, docCharsLimit);
+  let truncated = fullDoc.length > docCharsLimit;
   const title = payload.title || "documento";
 
-  const system =
+  const makeSystemPrompt = (d: string, isTrunc: boolean) =>
     `Eres el asistente de Markify. Respondes preguntas sobre UN documento que el ` +
     `usuario acaba de convertir a Markdown. Conoces todo su contenido (está abajo).\n\n` +
     `Reglas:\n` +
     `- Responde en el mismo idioma de la pregunta.\n` +
     `- Sé preciso y concreto; cita o resume las partes relevantes del documento.\n` +
+    `- IMPORTANTE: Cuando cites o hagas referencia a una frase, línea o sección exacta del documento, enciérrala EXACTAMENTE en etiquetas <ref>texto exacto del documento</ref>. No alteres el texto dentro de estas etiquetas (debe coincidir letra por letra con el documento) para que la interfaz pueda resaltarlo. Ejemplo: "como se menciona en <ref>el beneficio neto aumentó un 12%</ref>".\n` +
     `- Si la respuesta no está en el documento, dilo claramente en lugar de inventar.\n` +
     `- Usa Markdown cuando ayude (listas, negritas, tablas).\n\n` +
-    `=== DOCUMENTO: "${title}" ===\n${doc}` +
-    (truncated ? "\n\n[El documento se truncó por su tamaño.]" : "") +
+    `=== DOCUMENTO: "${title}" ===\n${d}` +
+    (isTrunc ? "\n\n[El documento se truncó por su tamaño.]" : "") +
     `\n=== FIN DEL DOCUMENTO ===`;
+
+  let system = makeSystemPrompt(doc, truncated);
 
   let groqRes: Response;
   try {
@@ -69,8 +73,46 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No se pudo contactar con la IA." }, { status: 502 });
   }
 
+  let detail = "";
+  if (!groqRes.ok) {
+    detail = await groqRes.text().catch(() => "");
+    const isTooLarge =
+      groqRes.status === 413 ||
+      groqRes.status === 429 ||
+      /too large|tpm|limit|rate limit/i.test(detail);
+
+    if (isTooLarge && docCharsLimit > 30_000) {
+      // Si falla por tamaño/TPM, reintentamos inmediatamente truncando a un límite seguro (aprox. 6k tokens)
+      docCharsLimit = 30_000;
+      doc = fullDoc.slice(0, docCharsLimit);
+      truncated = true;
+      system = makeSystemPrompt(doc, truncated);
+
+      try {
+        groqRes = await fetch(GROQ_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${key}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            temperature: 0.3,
+            stream: true,
+            messages: [{ role: "system", content: system }, ...messages],
+          }),
+        });
+      } catch {
+        return NextResponse.json({ error: "No se pudo contactar con la IA en el reintento." }, { status: 502 });
+      }
+
+      if (!groqRes.ok) {
+        detail = await groqRes.text().catch(() => "");
+      }
+    }
+  }
+
   if (!groqRes.ok || !groqRes.body) {
-    const detail = await groqRes.text().catch(() => "");
     return NextResponse.json(
       { error: `La IA devolvió un error (${groqRes.status}). ${detail.slice(0, 200)}` },
       { status: groqRes.status || 502 }

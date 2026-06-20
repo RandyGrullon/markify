@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Sparkles, Loader2, Bot, User, RotateCcw } from "lucide-react";
+import { Send, Sparkles, Loader2, Bot, User, RotateCcw, Copy, Check } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -17,9 +17,11 @@ const SUGGESTIONS = [
 export default function DocChat({
   document,
   title,
+  onCitationClick,
 }: {
   document: string;
   title: string;
+  onCitationClick?: (text: string) => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -57,15 +59,27 @@ export default function DocChat({
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let acc = "";
+        let lastUpdate = Date.now();
         for (;;) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            setMessages((m) => {
+              const copy = m.slice();
+              copy[copy.length - 1] = { role: "assistant", content: acc };
+              return copy;
+            });
+            break;
+          }
           acc += decoder.decode(value, { stream: true });
-          setMessages((m) => {
-            const copy = m.slice();
-            copy[copy.length - 1] = { role: "assistant", content: acc };
-            return copy;
-          });
+          const now = Date.now();
+          if (now - lastUpdate > 60) {
+            lastUpdate = now;
+            setMessages((m) => {
+              const copy = m.slice();
+              copy[copy.length - 1] = { role: "assistant", content: acc };
+              return copy;
+            });
+          }
         }
         if (!acc.trim()) {
           setMessages((m) => {
@@ -141,7 +155,30 @@ export default function DocChat({
               >
                 {m.role === "assistant" ? (
                   m.content ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({ href, children, ...props }) => {
+                          if (href && href.startsWith("cite:")) {
+                            const text = decodeURIComponent(href.slice(5));
+                            return (
+                              <CitationBubble
+                                text={text}
+                                title={title}
+                                onClick={() => onCitationClick?.(text)}
+                              />
+                            );
+                          }
+                          return (
+                            <a href={href} {...props} className="text-brand-600 underline dark:text-brand-400">
+                              {children}
+                            </a>
+                          );
+                        }
+                      }}
+                    >
+                      {m.content.replace(/<ref>(.*?)<\/ref>/gs, (_, text) => `[${text}](cite:${encodeURIComponent(text)})`)}
+                    </ReactMarkdown>
                   ) : (
                     <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
                   )
@@ -195,5 +232,54 @@ export default function DocChat({
         </button>
       </form>
     </div>
+  );
+}
+
+function CitationBubble({
+  text,
+  title,
+  onClick,
+}: {
+  text: string;
+  title: string;
+  onClick?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyApa = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Evita disparar el highlight al hacer click en el botón de copia
+    const currentYear = new Date().getFullYear();
+    const apaText = `"${text}". En: ${title} (Markify, ${currentYear}).`;
+    try {
+      await navigator.clipboard.writeText(apaText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("No se pudo copiar la cita:", err);
+    }
+  };
+
+  return (
+    <span
+      onClick={onClick}
+      title="Haz clic para resaltar en el documento"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-500/20 text-brand-800 dark:text-brand-300 font-medium cursor-pointer border border-brand-200/40 dark:border-brand-500/10 hover:bg-brand-200 dark:hover:bg-brand-500/30 transition-all duration-200 my-0.5 group"
+    >
+      <span className="underline decoration-dotted decoration-brand-500/50 underline-offset-2">
+        {text}
+      </span>
+      <button
+        type="button"
+        onClick={copyApa}
+        title="Copiar como referencia APA"
+        className="ml-1 p-0.5 rounded hover:bg-white dark:hover:bg-slate-800 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-emerald-600" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </button>
+    </span>
   );
 }
