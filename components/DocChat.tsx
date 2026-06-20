@@ -18,10 +18,12 @@ export default function DocChat({
   document,
   title,
   onCitationClick,
+  onCitationsFound,
 }: {
   document: string;
   title: string;
   onCitationClick?: (text: string) => void;
+  onCitationsFound?: (citations: string[]) => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -30,8 +32,45 @@ export default function DocChat({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, busy]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      onCitationsFound?.([]);
+      return;
+    }
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === "assistant") {
+      const matches: string[] = [];
+      const re = /<ref>(.*?)<\/ref>/gs;
+      let match;
+      while ((match = re.exec(lastMsg.content)) !== null) {
+        const text = match[1].trim();
+        if (text && !matches.push(text)) {
+          // just to filter duplicates
+          if (!matches.includes(text)) {
+            matches.push(text);
+          }
+        }
+      }
+      // Actually let's just write a cleaner deduplication
+      const uniqueMatches: string[] = [];
+      let m2;
+      const re2 = /<ref>(.*?)<\/ref>/gs;
+      while ((m2 = re2.exec(lastMsg.content)) !== null) {
+        const text = m2[1].trim();
+        if (text && !uniqueMatches.includes(text)) {
+          uniqueMatches.push(text);
+        }
+      }
+      onCitationsFound?.(uniqueMatches);
+    } else {
+      onCitationsFound?.([]);
+    }
+  }, [messages, onCitationsFound]);
 
   const ask = useCallback(
     async (question: string) => {

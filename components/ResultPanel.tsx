@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -19,6 +19,10 @@ import {
 import DocChat from "@/components/DocChat";
 
 type Result = { filename: string; markdown: string; title: string };
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export default function ResultPanel({
   result,
@@ -40,6 +44,7 @@ export default function ResultPanel({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [isAiSource, setIsAiSource] = useState(false);
+  const [aiCitations, setAiCitations] = useState<string[]>([]);
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +52,7 @@ export default function ResultPanel({
   useEffect(() => {
     setMarkdownText(result.markdown);
     setIsEditing(false);
+    setAiCitations([]);
   }, [result.markdown]);
 
   const toggleChat = useCallback(() => {
@@ -68,7 +74,19 @@ export default function ResultPanel({
     return () => clearTimeout(handler);
   }, [query]);
 
-  // Resalta y desplaza la vista previa al buscar/referenciar texto exacto
+  // Derivamos los términos a resaltar y el tipo de fuente (IA o manual)
+  const { activeQueries, activeIsAiSource } = useMemo(() => {
+    const q = debouncedQuery.trim();
+    if (q) {
+      return { activeQueries: [q], activeIsAiSource: isAiSource };
+    }
+    if (aiCitations.length > 0) {
+      return { activeQueries: aiCitations, activeIsAiSource: true };
+    }
+    return { activeQueries: [], activeIsAiSource: false };
+  }, [debouncedQuery, aiCitations, isAiSource]);
+
+  // Resalta y desplaza la vista previa al buscar/referenciar texto exacto o citas de la IA
   useEffect(() => {
     const container = panelRef.current;
     if (!container) return;
@@ -85,53 +103,66 @@ export default function ResultPanel({
       }
     });
 
-    const q = debouncedQuery.trim();
-    if (!q) return;
+    if (activeQueries.length === 0) return;
 
     // Buscamos el contenedor de la Vista Previa activa
     const previewContainer = container.querySelector(".markdown-preview");
     if (!previewContainer) return;
 
+    const escaped = activeQueries.map((q) => escapeRegExp(q));
+    const re = new RegExp(`(${escaped.join("|")})`, "gi");
+
     // Helper recursivo para buscar y resaltar en nodos de texto
     const walk = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.nodeValue || "";
-        const index = text.toLowerCase().indexOf(q.toLowerCase());
-        if (index !== -1) {
-          const matchText = text.substring(index, index + q.length);
-          const before = text.substring(0, index);
-          const after = text.substring(index + q.length);
-
+        const parts = text.split(re);
+        if (parts.length > 1) {
           const parent = node.parentNode;
           if (parent) {
-            const wrapper = document.createElement("span");
-            wrapper.className = "preview-hl inline-flex items-center flex-wrap";
+            const fragment = document.createDocumentFragment();
+            parts.forEach((part) => {
+              const isMatch = activeQueries.some(
+                (q) => q.toLowerCase() === part.toLowerCase()
+              );
+              if (isMatch) {
+                const wrapper = document.createElement("span");
+                wrapper.className = "preview-hl inline-flex items-center flex-wrap";
 
-            const mark = document.createElement("mark");
-            mark.className = "bg-brand-100 dark:bg-brand-500/20 text-brand-900 dark:text-brand-300 rounded px-1 py-0.5 dark:text-white ring-2 ring-brand-500/30 animate-pulse font-medium";
-            mark.textContent = matchText;
-            wrapper.appendChild(mark);
+                const mark = document.createElement("mark");
+                mark.className =
+                  "bg-brand-100 dark:bg-brand-500/25 text-brand-900 dark:text-brand-300 rounded px-1 py-0.5 dark:text-white ring-2 ring-brand-500/30 font-medium transition-all duration-300";
+                mark.textContent = part;
+                wrapper.appendChild(mark);
 
-            if (isAiSource) {
-              const badge = document.createElement("span");
-              badge.className = "ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-brand-600 to-violet-600 text-white px-2 py-0.5 rounded-full shadow-sm cursor-default select-none animate-bounce";
-              badge.innerHTML = "✨ Fuente IA";
-              wrapper.appendChild(badge);
-            }
+                if (activeIsAiSource) {
+                  const badge = document.createElement("span");
+                  badge.className =
+                    "ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-brand-600 to-violet-600 text-white px-2 py-0.5 rounded-full shadow-sm cursor-default select-none animate-pulse";
+                  badge.innerHTML = "✨ Fuente IA";
+                  wrapper.appendChild(badge);
+                }
 
-            const beforeNode = before ? document.createTextNode(before) : null;
-            const afterNode = after ? document.createTextNode(after) : null;
-
-            if (beforeNode) parent.insertBefore(beforeNode, node);
-            parent.insertBefore(wrapper, node);
-            if (afterNode) parent.insertBefore(afterNode, node);
-
-            parent.removeChild(node);
+                fragment.appendChild(wrapper);
+              } else if (part) {
+                fragment.appendChild(document.createTextNode(part));
+              }
+            });
+            parent.replaceChild(fragment, node);
           }
         }
       } else {
-        const isWrapper = node.nodeName === "SPAN" && (node as HTMLElement).classList.contains("preview-hl");
-        if (!isWrapper && node.nodeName !== "SCRIPT" && node.nodeName !== "STYLE" && node.nodeName !== "MARK" && node.nodeName !== "A" && node.nodeName !== "BUTTON") {
+        const isWrapper =
+          node.nodeName === "SPAN" &&
+          (node as HTMLElement).classList.contains("preview-hl");
+        if (
+          !isWrapper &&
+          node.nodeName !== "SCRIPT" &&
+          node.nodeName !== "STYLE" &&
+          node.nodeName !== "MARK" &&
+          node.nodeName !== "A" &&
+          node.nodeName !== "BUTTON"
+        ) {
           const children = Array.from(node.childNodes);
           children.forEach(walk);
         }
@@ -145,7 +176,7 @@ export default function ResultPanel({
     if (firstMark) {
       firstMark.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-  }, [debouncedQuery, isAiSource, isEditing, markdownText]);
+  }, [activeQueries, activeIsAiSource, isEditing, markdownText]);
 
   const copy = async () => {
     try {
@@ -407,6 +438,9 @@ export default function ResultPanel({
                 title={result.title}
                 onCitationClick={(text) => {
                   triggerSearch(text, true, true);
+                }}
+                onCitationsFound={(citations) => {
+                  setAiCitations(citations);
                 }}
               />
             </div>
