@@ -66,6 +66,14 @@ async function convert(buf: Buffer, filename: string): Promise<ConvertResult> {
       try {
         const result = await parser.getText();
         return { markdown: (result.text || "").trim() };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/password/i.test(msg)) {
+          throw new Error(
+            "El PDF está protegido con contraseña. Quítale la protección y vuelve a intentarlo."
+          );
+        }
+        throw new Error(`No se pudo leer el PDF (${msg}).`);
       } finally {
         await parser.destroy();
       }
