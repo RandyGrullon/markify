@@ -64,6 +64,8 @@ export default function Page() {
       }
     : null;
 
+  const [hasResult, setHasResult] = useState(false);
+
   return (
     <div className="min-h-screen">
       <Header
@@ -72,7 +74,9 @@ export default function Page() {
         onOpenTutorial={() => setTutorialOpen(true)}
       />
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+      <main className={`mx-auto px-4 py-8 sm:px-6 sm:py-12 transition-all duration-300 ${
+        hasResult ? "max-w-[98vw] 2xl:max-w-[1700px]" : "max-w-3xl"
+      }`}>
         {/* Hero */}
         <section className="mb-8 text-center sm:mb-10">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
@@ -101,7 +105,7 @@ export default function Page() {
         ) : !session ? (
           <SignIn onSignIn={signIn} signingIn={signingIn} />
         ) : (
-          <Converter userId={session.user.id} />
+          <Converter userId={session.user.id} onResultChange={setHasResult} />
         )}
       </main>
 

@@ -33,7 +33,13 @@ function prettyBytes(n: number | null | undefined): string {
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
 }
 
-export default function Converter({ userId }: { userId: string }) {
+export default function Converter({
+  userId,
+  onResultChange,
+}: {
+  userId: string;
+  onResultChange?: (hasResult: boolean) => void;
+}) {
   const supabase = useMemo(() => getSupabase(), []);
 
   const [status, setStatus] = useState<Status>("idle");
@@ -46,6 +52,12 @@ export default function Converter({ userId }: { userId: string }) {
   // Cada apertura (conversión o item del historial) remonta el panel de resultado.
   const [openId, setOpenId] = useState(0);
   const [initialChat, setInitialChat] = useState(false);
+
+  useEffect(() => {
+    if (onResultChange) {
+      onResultChange(result !== null);
+    }
+  }, [result, onResultChange]);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
