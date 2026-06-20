@@ -64,8 +64,6 @@ export default function Page() {
       }
     : null;
 
-  const [hasResult, setHasResult] = useState(false);
-
   return (
     <div className="min-h-screen">
       <Header
@@ -74,11 +72,12 @@ export default function Page() {
         onOpenTutorial={() => setTutorialOpen(true)}
       />
 
-      <main className={`mx-auto px-4 py-8 sm:px-6 sm:py-12 transition-all duration-300 ${
-        hasResult ? "max-w-[98vw] 2xl:max-w-[1700px]" : "max-w-3xl"
-      }`}>
+      {/* Contenedor fluido: ancho constante y generoso en todas las resoluciones.
+          El contenido angosto (hero, login, carga) se centra solo; el panel de
+          resultado aprovecha el ancho completo. Así no hay saltos bruscos. */}
+      <main className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
         {/* Hero */}
-        <section className="mb-8 text-center sm:mb-10">
+        <section className="mx-auto mb-8 max-w-3xl text-center sm:mb-10">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
             <Sparkles className="h-3.5 w-3.5" /> Ahora con chat de IA
           </span>
@@ -97,15 +96,19 @@ export default function Page() {
         </section>
 
         {!configured ? (
-          <SetupNotice />
+          <div className="mx-auto max-w-3xl">
+            <SetupNotice />
+          </div>
         ) : loading ? (
           <div className="flex justify-center py-20">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600 dark:border-slate-700 dark:border-t-brand-400" />
           </div>
         ) : !session ? (
-          <SignIn onSignIn={signIn} signingIn={signingIn} />
+          <div className="mx-auto max-w-3xl">
+            <SignIn onSignIn={signIn} signingIn={signingIn} />
+          </div>
         ) : (
-          <Converter userId={session.user.id} onResultChange={setHasResult} />
+          <Converter userId={session.user.id} />
         )}
       </main>
 

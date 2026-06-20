@@ -331,17 +331,17 @@ function CitationBubble({
   return (
     <span
       onClick={onClick}
-      title="Haz clic para resaltar en el documento"
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-500/20 text-brand-800 dark:text-brand-300 font-medium cursor-pointer border border-brand-200/40 dark:border-brand-500/10 hover:bg-brand-200 dark:hover:bg-brand-500/30 transition-all duration-200 my-0.5 group"
+      title="Haz clic para resaltarlo en el documento"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-400/20 text-orange-800 dark:text-orange-200 font-medium cursor-pointer border border-orange-300/50 dark:border-orange-400/20 hover:bg-orange-200 dark:hover:bg-orange-400/30 transition-all duration-200 my-0.5 group"
     >
-      <span className="underline decoration-dotted decoration-brand-500/50 underline-offset-2">
+      <span className="underline decoration-dotted decoration-orange-500/60 underline-offset-2">
         {text}
       </span>
       <button
         type="button"
         onClick={copyApa}
-        title="Copiar como referencia APA"
-        className="ml-1 p-0.5 rounded hover:bg-white dark:hover:bg-slate-800 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition"
+        title="Copiar como referencia para pegar en un documento"
+        className="ml-1 p-0.5 rounded hover:bg-white dark:hover:bg-slate-800 text-slate-400 hover:text-orange-600 dark:hover:text-orange-300 transition"
       >
         {copied ? (
           <Check className="h-3 w-3 text-emerald-600" />

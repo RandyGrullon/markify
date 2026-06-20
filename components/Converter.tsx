@@ -35,10 +35,8 @@ function prettyBytes(n: number | null | undefined): string {
 
 export default function Converter({
   userId,
-  onResultChange,
 }: {
   userId: string;
-  onResultChange?: (hasResult: boolean) => void;
 }) {
   const supabase = useMemo(() => getSupabase(), []);
 
@@ -84,12 +82,6 @@ export default function Converter({
     setResult(prev => prev ? { ...prev, markdown: newMarkdown } : null);
     await loadHistory();
   }, [activeConversion, supabase, loadHistory]);
-
-  useEffect(() => {
-    if (onResultChange) {
-      onResultChange(result !== null);
-    }
-  }, [result, onResultChange]);
 
   useEffect(() => {
     loadHistory();
@@ -231,10 +223,10 @@ export default function Converter({
 
   return (
     <div className="space-y-6">
-      {/* ── Zona de carga ── */}
+      {/* ── Zona de carga (centrada y angosta) ── */}
       <div
         {...getRootProps()}
-        className={`relative overflow-hidden rounded-3xl border-2 border-dashed bg-white/70 p-8 text-center backdrop-blur-sm transition-colors dark:bg-slate-900/50 sm:p-12 ${
+        className={`relative mx-auto w-full max-w-3xl overflow-hidden rounded-3xl border-2 border-dashed bg-white/70 p-8 text-center backdrop-blur-sm transition-colors dark:bg-slate-900/50 sm:p-12 ${
           isDragActive
             ? "border-brand-500 bg-brand-50/80 dark:bg-brand-500/10"
             : "border-slate-300 hover:border-brand-400 dark:border-slate-700 dark:hover:border-brand-500"
@@ -295,7 +287,7 @@ export default function Converter({
 
       {/* ── Error ── */}
       {status === "error" && error && (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 animate-fade-in dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+        <div className="mx-auto flex w-full max-w-3xl items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 animate-fade-in dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
           <p>{error}</p>
         </div>
@@ -312,8 +304,8 @@ export default function Converter({
         />
       )}
 
-      {/* ── Historial ── */}
-      <div className="rounded-3xl border border-slate-200 bg-white/70 p-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/50 sm:p-5">
+      {/* ── Historial (centrado y angosto) ── */}
+      <div className="mx-auto w-full max-w-3xl rounded-3xl border border-slate-200 bg-white/70 p-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/50 sm:p-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
             <HistoryIcon className="h-4 w-4 text-slate-400" />

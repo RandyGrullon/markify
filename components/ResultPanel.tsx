@@ -24,6 +24,18 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Iconos inline (lucide) para el botón de copiar que se inyecta en el DOM del preview.
+const COPY_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+const CHECK_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+// Referencia lista para pegar en un documento.
+function buildReference(text: string, title: string): string {
+  const year = new Date().getFullYear();
+  return `"${text}". En: ${title} (Markify, ${year}).`;
+}
+
 export default function ResultPanel({
   result,
   saving,
@@ -127,21 +139,47 @@ export default function ResultPanel({
               );
               if (isMatch) {
                 const wrapper = document.createElement("span");
-                wrapper.className = "preview-hl inline-flex items-center flex-wrap";
+                wrapper.className = "preview-hl inline-flex items-center flex-wrap align-baseline";
 
+                // Sombreado naranja: "mira, aquí es".
                 const mark = document.createElement("mark");
                 mark.className =
-                  "bg-brand-100 dark:bg-brand-500/25 text-brand-900 dark:text-brand-300 rounded px-1 py-0.5 dark:text-white ring-2 ring-brand-500/30 font-medium transition-all duration-300";
+                  "rounded px-1 py-0.5 font-medium transition-all duration-300 bg-orange-200 text-orange-950 ring-2 ring-orange-400/60 dark:bg-orange-400/30 dark:text-orange-50 dark:ring-orange-400/50";
                 mark.textContent = part;
                 wrapper.appendChild(mark);
 
                 if (activeIsAiSource) {
                   const badge = document.createElement("span");
                   badge.className =
-                    "ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-brand-600 to-violet-600 text-white px-2 py-0.5 rounded-full shadow-sm cursor-default select-none animate-pulse";
+                    "ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-orange-600 text-white px-2 py-0.5 rounded-full shadow-sm cursor-default select-none";
                   badge.innerHTML = "✨ Fuente IA";
                   wrapper.appendChild(badge);
                 }
+
+                // Botón para copiar la cita y pegarla como referencia en un documento.
+                const copyBtn = document.createElement("button");
+                copyBtn.type = "button";
+                copyBtn.title = "Copiar como referencia para pegar en un documento";
+                copyBtn.className =
+                  "ml-1 inline-flex items-center justify-center rounded p-0.5 align-middle text-orange-700 transition hover:bg-orange-100 dark:text-orange-300 dark:hover:bg-orange-400/20";
+                copyBtn.innerHTML = COPY_SVG;
+                const matchText = part;
+                copyBtn.addEventListener("click", (ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  navigator.clipboard
+                    .writeText(buildReference(matchText, result.title))
+                    .then(() => {
+                      copyBtn.innerHTML = CHECK_SVG;
+                      copyBtn.classList.add("text-emerald-600", "dark:text-emerald-400");
+                      window.setTimeout(() => {
+                        copyBtn.innerHTML = COPY_SVG;
+                        copyBtn.classList.remove("text-emerald-600", "dark:text-emerald-400");
+                      }, 1500);
+                    })
+                    .catch(() => {});
+                });
+                wrapper.appendChild(copyBtn);
 
                 fragment.appendChild(wrapper);
               } else if (part) {
@@ -176,7 +214,7 @@ export default function ResultPanel({
     if (firstMark) {
       firstMark.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-  }, [activeQueries, activeIsAiSource, isEditing, markdownText]);
+  }, [activeQueries, activeIsAiSource, isEditing, markdownText, result.title]);
 
   const copy = async () => {
     try {
