@@ -71,11 +71,33 @@ export default function Converter({ userId }: { userId: string }) {
       setTab("preview");
       setStatus("converting");
 
+      // Subimos el original a Supabase y convertimos desde una URL firmada.
+      // Así evitamos el límite de 4.5 MB del cuerpo de las funciones de Vercel
+      // y cualquier PDF (hasta 20 MB) funciona igual en local y en producción.
+      const stamp = Date.now();
+      const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+      const originalPath = `${userId}/originals/${stamp}-${safeName}`;
+
       try {
+        const { error: origErr } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .upload(originalPath, file, {
+            contentType: file.type || "application/octet-stream",
+            upsert: false,
+          });
+        if (origErr) throw new Error("No se pudo subir el archivo a tu nube.");
+
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .createSignedUrl(originalPath, 300);
+        if (signErr || !signed?.signedUrl) {
+          throw new Error("No se pudo preparar el archivo para convertir.");
+        }
+
         const res = await fetch(CONVERTER_URL, {
           method: "POST",
-          headers: { "x-filename": encodeURIComponent(file.name) },
-          body: file,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: signed.signedUrl, filename: file.name }),
         });
 
         const data = await res.json().catch(() => ({}));
@@ -90,10 +112,10 @@ export default function Converter({ userId }: { userId: string }) {
         };
         setResult(r);
 
-        // Guardar en Supabase (Storage + base de datos)
+        // Guardar el Markdown en Supabase (Storage + base de datos)
         setStatus("saving");
         try {
-          const path = `${userId}/${Date.now()}-${r.filename}`;
+          const path = `${userId}/${stamp}-${r.filename}`;
           const blob = new Blob([r.markdown], { type: "text/markdown" });
 
           const { error: upErr } = await supabase.storage
@@ -123,6 +145,9 @@ export default function Converter({ userId }: { userId: string }) {
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Ocurrió un error inesperado.");
         setStatus("error");
+      } finally {
+        // Solo guardamos el Markdown: borramos el original subido temporalmente.
+        supabase.storage.from(STORAGE_BUCKET).remove([originalPath]).catch(() => {});
       }
     },
     [supabase, userId, loadHistory]
@@ -224,7 +249,7 @@ export default function Converter({ userId }: { userId: string }) {
                 {isDragActive ? "Suelta el archivo aquí" : "Arrastra tu archivo"}
               </p>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                PDF, Word, PowerPoint, Excel, imágenes, audio y más · máx. 20&nbsp;MB
+                PDF, Word, Excel, CSV, HTML y texto · máx. 20&nbsp;MB
               </p>
             </div>
             <button

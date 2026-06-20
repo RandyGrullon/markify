@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/convert.py": {
+    "app/api/convert/route.ts": {
       "memory": 1024,
       "maxDuration": 60
     }

@@ -30,13 +30,13 @@ const STEPS: Step[] = [
   {
     icon: <UploadCloud className="h-7 w-7" />,
     title: "2 · Sube tu archivo",
-    body: "Arrastra el archivo a la zona punteada o tócala para elegirlo. Sirve PDF, Word, PowerPoint, Excel, imágenes, audio y más.",
+    body: "Arrastra el archivo a la zona punteada o tócala para elegirlo. Sirve PDF, Word, Excel, CSV, HTML y texto.",
     tip: "En móvil/iPad puedes subir desde Archivos, Fotos o iCloud Drive.",
   },
   {
     icon: <Wand2 className="h-7 w-7" />,
     title: "3 · Se convierte solo",
-    body: "Markify convierte tu archivo a Markdown limpio en segundos usando la tecnología markitdown de Microsoft.",
+    body: "Markify convierte tu archivo a Markdown limpio en segundos, directamente en tu navegador y tu nube privada.",
   },
   {
     icon: <Eye className="h-7 w-7" />,

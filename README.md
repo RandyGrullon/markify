@@ -1,15 +1,15 @@
 # 📄 Markify
 
-Convierte **cualquier archivo** (PDF, Word, PowerPoint, Excel, imágenes, audio…) a **Markdown limpio**, listo para pegar en **Claude**. Con vista previa, descarga, login con Google e historial guardado en la nube.
+Convierte tus archivos (**PDF, Word, Excel, CSV, HTML y texto**) a **Markdown limpio**, listo para pegar en **Claude**. Con vista previa, descarga, login con Google e historial guardado en la nube.
 
 - 🎨 Diseño moderno y responsive: se ve y funciona perfecto en **móvil, iPad y Mac**.
 - 🔐 Login con **Google** (vía Supabase).
 - ☁️ Guarda tus conversiones de forma **privada** (Supabase Storage + base de datos).
 - 👀 **Vista previa** con formato + código Markdown.
 - 🧙 **Tutorial guiado** dentro de la app (se abre solo la primera vez; botón «¿Cómo funciona?» para repetirlo).
-- ⚙️ Conversión con [**markitdown** de Microsoft](https://github.com/microsoft/markitdown).
+- ⚙️ Conversión **100% en Node/TypeScript** (sin Python): funciona igual en local y en Vercel.
 
-Todo en **un solo proyecto** que se despliega en **Vercel** (la web + la función Python que convierte).
+Todo en **un solo proyecto** Next.js que se despliega en **Vercel** (web + API de conversión).
 
 ---
 
@@ -19,14 +19,19 @@ Todo en **un solo proyecto** que se despliega en **Vercel** (la web + la funció
 Usuario (móvil/iPad/Mac)
         │  sube archivo
         ▼
-Next.js (la web bonita)  ──POST raw──►  /api/convert.py  (función Python en Vercel)
-        │                                      │  usa markitdown → Markdown
-        │  ◄────────── { markdown } ───────────┘
+Next.js (la web)  ──1) sube el original──►  Supabase Storage (URL firmada)
+        │                                          │
+        │  2) POST { url } ──► /api/convert (Node) ─┘  descarga + convierte → Markdown
+        │  ◄──────────── { markdown } ─────────────────┘
         ▼
 Supabase  ── guarda el .md en Storage + registro en la tabla "conversions"
         ▼
 Vista previa + Descargar + Historial
 ```
+
+> El archivo se sube primero a tu nube y la API lo convierte desde una **URL firmada**.
+> Así se evita el límite de 4.5 MB del cuerpo de las funciones serverless y cualquier
+> PDF (hasta 20 MB) funciona igual. El original temporal se borra tras convertir.
 
 ---
 
@@ -95,14 +100,8 @@ npm run dev
 
 Abre [http://localhost:3000](http://localhost:3000).
 
-> ⚠️ La función de conversión (`/api/convert.py`) corre en el entorno de **Vercel**. En local con `npm run dev` la parte Python **no se ejecuta**. Para probar la conversión completa en local usa el CLI de Vercel:
->
-> ```bash
-> npm i -g vercel
-> vercel dev
-> ```
->
-> O simplemente despliega a Vercel (paso 6), donde todo funciona junto.
+> ✅ La conversión ahora corre en **Node** (`app/api/convert/route.ts`), así que funciona
+> directamente con `npm run dev` — sin Python ni `vercel dev`.
 
 ### 6. Desplegar en Vercel (para que tu novia lo use desde cualquier lado)
 
@@ -111,9 +110,8 @@ Abre [http://localhost:3000](http://localhost:3000).
 3. En **Environment Variables** añade:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. **Deploy**. Vercel detecta automáticamente:
-   - El frontend **Next.js**.
-   - La función **Python** (`api/convert.py`) usando `requirements.txt` (instala `markitdown[all]`).
+4. **Deploy**. Vercel detecta automáticamente el proyecto **Next.js** (web + API de
+   conversión en Node). No hay dependencias de Python.
 5. Cuando tengas la URL final (`https://TU-APP.vercel.app`), vuelve a Supabase → **Authentication → URL Configuration** y añádela a **Site URL** y **Redirect URLs**.
 
 ¡Listo! Comparte la URL de Vercel con tu novia. Puede abrirla en **Safari/Chrome** del iPhone, iPad o Mac, iniciar sesión con Google y empezar a convertir.
@@ -139,7 +137,8 @@ El tutorial guiado se abre solo la primera vez. Para verlo otra vez: botón **«
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind CSS**
 - **Supabase** (Auth con Google · Postgres · Storage)
-- **Python serverless** en Vercel + **markitdown[all]**
+- **API de conversión en Node** (Route Handler): `pdf-parse` (PDF), `mammoth` (Word),
+  `xlsx` (Excel/CSV), `turndown` (HTML)
 - `react-markdown` + `remark-gfm` para la vista previa
 - `react-dropzone` para subir archivos · `lucide-react` para iconos
 
@@ -149,7 +148,7 @@ El tutorial guiado se abre solo la primera vez. Para verlo otra vez: botón **«
 
 - **«Falta configurar Supabase»** → no creaste `.env.local` o faltan las claves.
 - **El login no vuelve a la app** → revisa **Redirect URLs** en Supabase (deben incluir la URL exacta, local y de Vercel).
-- **La conversión falla en local** → recuerda que la parte Python solo corre en Vercel o con `vercel dev`.
-- **Archivo muy grande** → el límite es 20 MB (ajustable en `api/convert.py` y `vercel.json`).
-- **PDF escaneado sin texto** → markitdown extrae texto; si el PDF es solo imágenes, el resultado puede salir vacío.
-```
+- **La conversión falla** → revisa que el bucket `conversions` y las políticas (RLS) del `schema.sql` estén creados: el archivo se sube primero a tu nube.
+- **Archivo muy grande** → el límite es 20 MB (ajustable en `app/api/convert/route.ts` y `vercel.json`).
+- **PDF escaneado sin texto** → se extrae el texto incrustado; si el PDF es solo imágenes (sin capa de texto), el resultado puede salir vacío.
+- **Formato no soportado** → hoy soporta PDF, Word (.docx), Excel (.xlsx/.xls/.csv), HTML y texto. PowerPoint, imágenes y audio no están incluidos.

@@ -85,7 +85,7 @@ export default function Page() {
             </span>
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-slate-600 dark:text-slate-400 sm:text-base">
-            Sube un PDF, Word, PowerPoint, Excel o imagen y obtén Markdown limpio,
+            Sube un PDF, Word, Excel, CSV, HTML o texto y obtén Markdown limpio,
             con vista previa y listo para pegar en Claude. Se guarda en tu nube
             privada.
           </p>
@@ -105,16 +105,7 @@ export default function Page() {
       </main>
 
       <footer className="mx-auto max-w-3xl px-4 pb-10 text-center text-xs text-slate-400 dark:text-slate-500 sm:px-6">
-        Hecho con 💜 · Conversión por{" "}
-        <a
-          href="https://github.com/microsoft/markitdown"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-slate-600 dark:hover:text-slate-300"
-        >
-          markitdown
-        </a>{" "}
-        de Microsoft
+        Hecho con 💜 · Convierte tus archivos a Markdown para Claude
       </footer>
 
       <Tutorial open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
